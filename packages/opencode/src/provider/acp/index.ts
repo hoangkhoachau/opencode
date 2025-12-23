@@ -1,5 +1,6 @@
 export { ACPLanguageModel } from "./model"
 export { ACPClient } from "./client"
+export { ACPConnectionPool } from "./pool"
 export { createACPProvider } from "./factory"
 export { vercelToACPMessages, acpToVercelMessages } from "./converters"
 export { convertAllMcps, convertMcpToAcp } from "./mcp-converter"
