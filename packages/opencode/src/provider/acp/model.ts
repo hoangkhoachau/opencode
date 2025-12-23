@@ -8,6 +8,7 @@ import type {
 } from "@ai-sdk/provider"
 import type { SessionNotification } from "@agentclientprotocol/sdk"
 import { ACPClient } from "./client"
+import { ACPConnectionPool } from "./pool"
 import { vercelToACPMessages } from "./converters"
 import type { ACPModelConfig } from "./types"
 import { Log } from "../../util/log"
@@ -83,12 +84,14 @@ export class ACPLanguageModel implements LanguageModelV2 {
     const sessionContext = this.getSessionContext(options)
 
     const clientArgs = [...this.args, "--model", this.modelId]
-    const client = new ACPClient(this.command, clientArgs, agent.permission, sessionContext)
+    
+    // Acquire from pool
+    const pool = ACPConnectionPool.getInstance()
+    const client = await pool.acquire(this.command, clientArgs, agent.permission, sessionContext)
 
     try {
-      await client.initialize()
-
-      const sessionId = await client.createSession({
+      // Reuse or create session
+      const sessionId = await client.getOrCreateSession({
         model: undefined,
         ...(this.maxTokens && { maxTokens: this.maxTokens }),
       })
@@ -139,9 +142,6 @@ export class ACPLanguageModel implements LanguageModelV2 {
       // Map finish reason from result
       finishReason = mapACPFinishReason(result.stopReason)
 
-      // Close session and cleanup
-      await client.closeSession(sessionId)
-
       // Build final content array
       const content: LanguageModelV2Content[] = []
       if (accumulatedText) {
@@ -159,8 +159,13 @@ export class ACPLanguageModel implements LanguageModelV2 {
         },
         warnings: [],
       }
-    } finally {
+    } catch (error) {
+      // On error, do full cleanup and don't return to pool
       await client.cleanup()
+      throw error
+    } finally {
+      // Release back to pool (doesn't kill subprocess)
+      await pool.release(client)
     }
   }
 
@@ -180,7 +185,10 @@ export class ACPLanguageModel implements LanguageModelV2 {
     const sessionContext = this.getSessionContext(options)
 
     const clientArgs = [...this.args, "--model", this.modelId]
-    const client = new ACPClient(this.command, clientArgs, agent.permission, sessionContext)
+    
+    // Acquire from pool
+    const pool = ACPConnectionPool.getInstance()
+    const client = await pool.acquire(this.command, clientArgs, agent.permission, sessionContext)
 
     const maxTokens = this.maxTokens
 
@@ -188,9 +196,8 @@ export class ACPLanguageModel implements LanguageModelV2 {
     const stream = new ReadableStream<LanguageModelV2StreamPart>({
       async start(controller) {
         try {
-          await client.initialize()
-
-          const sessionId = await client.createSession({
+          // Reuse or create session
+          const sessionId = await client.getOrCreateSession({
             model: undefined,
             ...(maxTokens && { maxTokens }),
           })
@@ -517,10 +524,16 @@ export class ACPLanguageModel implements LanguageModelV2 {
           controller.close()
         } catch (error) {
           controller.error(error)
+          // On error, do full cleanup
+          await client.cleanup()
+          throw error
+        } finally {
+          // Release back to pool (doesn't kill subprocess)
+          await pool.release(client)
         }
       },
       async cancel() {
-        await client.cleanup()
+        await pool.release(client)
       },
     })
 

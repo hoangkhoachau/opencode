@@ -56,6 +56,8 @@ export class ACPClient {
     messageID: string
     agentName: string
   }
+  currentSessionId: string | null = null
+  isPooled: boolean = false
 
   constructor(
     command: string,
@@ -363,7 +365,37 @@ export class ACPClient {
     })
 
     log.info("Session created", { sessionId: result.sessionId })
+    this.currentSessionId = result.sessionId
     return result.sessionId
+  }
+
+  /**
+   * Get existing session or create a new one
+   */
+  async getOrCreateSession(config: SessionConfig): Promise<string> {
+    if (this.currentSessionId) {
+      log.debug("Reusing existing session", { sessionId: this.currentSessionId })
+      return this.currentSessionId
+    }
+    return await this.createSession(config)
+  }
+
+  /**
+   * Reset the session - close old session and create new one
+   */
+  async resetSession(config: SessionConfig): Promise<string> {
+    if (this.currentSessionId) {
+      await this.closeSession(this.currentSessionId)
+      this.currentSessionId = null
+    }
+    return await this.createSession(config)
+  }
+
+  /**
+   * Set whether this client is managed by the pool
+   */
+  setPooled(pooled: boolean): void {
+    this.isPooled = pooled
   }
 
   /**
@@ -428,12 +460,16 @@ export class ACPClient {
       } catch (error) {
         log.error("Error closing connection", { error })
       }
-      this.connection = null
+      
+      // Clear connection reference if not pooled, keep it if pooled
+      if (!this.isPooled) {
+        this.connection = null
+      }
     }
 
-    if (this.subprocess) {
+    if (this.subprocess && !this.isPooled) {
       try {
-        // Kill the subprocess
+        // Kill the subprocess only if not pooled
         this.subprocess.kill()
         // Wait for it to exit
         await this.subprocess.exited
@@ -441,6 +477,11 @@ export class ACPClient {
         log.error("Error killing subprocess", { error })
       }
       this.subprocess = null
+    }
+
+    // Clear session ID on cleanup
+    if (!this.isPooled) {
+      this.currentSessionId = null
     }
   }
 

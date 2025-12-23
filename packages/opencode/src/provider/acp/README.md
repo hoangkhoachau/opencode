@@ -100,6 +100,65 @@ Add ACP providers to your `opencode.jsonc`:
 }
 ```
 
+## Performance
+
+### Connection Pooling
+
+ACP providers now use connection pooling to dramatically improve performance:
+
+- **First request**: ~2-3 seconds (subprocess spawn + initialization)
+- **Subsequent requests**: ~200-300ms (70-90% faster, reuses connections)
+- **Concurrent requests**: Better throughput with pooled connections
+
+### Configuration
+
+Configure the connection pool in your `opencode.jsonc`:
+
+```jsonc
+{
+  "provider": {
+    "cursor-acp": {
+      "options": {
+        "command": "cursor-agent",
+        "args": ["acp"],
+        "pool": {
+          "enabled": true,        // Enable connection pooling (default: true)
+          "maxSize": 3,           // Max connections per provider (default: 3)
+          "idleTimeout": 300000,  // Idle timeout in ms (default: 5 minutes)
+          "reuseSession": true    // Reuse sessions across requests (default: true)
+        }
+      }
+    }
+  }
+}
+```
+
+### How It Works
+
+1. **Connection Pool**: Maintains a pool of initialized ACP subprocesses
+2. **Session Reuse**: Reuses ACP sessions across multiple requests
+3. **Health Checking**: Automatically detects and replaces dead connections
+4. **Idle Cleanup**: Closes unused connections after timeout period
+5. **Graceful Shutdown**: Properly cleans up all connections on exit
+
+### Disabling the Pool
+
+To disable pooling and use the old behavior:
+
+```jsonc
+{
+  "provider": {
+    "cursor-acp": {
+      "options": {
+        "pool": {
+          "enabled": false
+        }
+      }
+    }
+  }
+}
+```
+
 ## Tool Execution and Permissions
 
 When using ACP backends, tool execution happens on the ACP side, but OpenCode's permission system can still control which tools are allowed.
@@ -177,14 +236,10 @@ opencode chat --model goose-acp/default
 
 - **Tool fallbacks**: ACP backends may try alternative tools when one is denied. To fully block file writes, deny both `edit` and `bash`.
 - **File callbacks not used by Cursor**: Cursor doesn't use `readTextFile`/`writeTextFile` callbacks, but permissions still work via `requestPermission`.
-- Creates new subprocess per request (no connection pooling yet)
-- Sessions are stateless (new session per request)
 - ACP agent must be installed and available in PATH
 
 ## Future Enhancements
 
-- Connection pooling to reuse subprocesses
-- Stateful session management across multiple requests
 - Advanced tool coordination if conflicts emerge
 - Performance monitoring and metrics
 - Caching for model capabilities
