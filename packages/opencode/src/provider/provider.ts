@@ -785,6 +785,7 @@ export namespace Provider {
         const acpModels = createACPProvider(providerID, {
           command: providerConfig.options.command,
           args: providerConfig.options.args,
+          pool: providerConfig.options.pool,
           models: Object.fromEntries(
             Object.entries(providerConfig.models ?? {}).map(([modelID, model]) => [
               modelID,
