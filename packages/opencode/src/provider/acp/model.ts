@@ -159,12 +159,9 @@ export class ACPLanguageModel implements LanguageModelV2 {
         },
         warnings: [],
       }
-    } catch (error) {
-      // On error, do full cleanup and don't return to pool
-      await client.cleanup()
-      throw error
     } finally {
       // Release back to pool (doesn't kill subprocess)
+      // Note: release handles both healthy and unhealthy clients
       await pool.release(client)
     }
   }
@@ -524,11 +521,9 @@ export class ACPLanguageModel implements LanguageModelV2 {
           controller.close()
         } catch (error) {
           controller.error(error)
-          // On error, do full cleanup
-          await client.cleanup()
-          throw error
         } finally {
           // Release back to pool (doesn't kill subprocess)
+          // Note: release handles both healthy and unhealthy clients
           await pool.release(client)
         }
       },

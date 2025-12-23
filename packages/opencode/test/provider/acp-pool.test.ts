@@ -21,22 +21,13 @@ const createMockClient = () => {
   return client as unknown as ACPClient
 }
 
-// Temporarily store the original ACPClient constructor
-let originalACPClient: any
-
 beforeEach(() => {
   // Reset the singleton instance
   ;(ACPConnectionPool as any).instance = null
-  
-  // Mock ACPClient constructor
-  originalACPClient = global.ACPClient
 })
 
 afterEach(() => {
-  // Restore original ACPClient
-  if (originalACPClient) {
-    global.ACPClient = originalACPClient
-  }
+  // Cleanup is handled by tests
 })
 
 test("ACPConnectionPool - singleton instance", () => {
